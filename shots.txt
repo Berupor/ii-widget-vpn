@@ -1,0 +1,7 @@
+# README shots, rendered by the extensions fork:
+#   tests/widget-shots.sh -x ~/.config/illogical-impulse/widgets/vpn
+# Both run off demo/, so no tunnel is opened and the pictures come out the same on
+# any machine. The other menu state is for looking at while working:
+#   widget-shots.sh -x . -- "-f demo/DemoVpn.qml -n off -p scenario=off -g 230x230"
+-f demo/DemoBar.qml -n bar -g 56x26 -H bar
+-f demo/DemoVpn.qml -n menu -g 230x337 -H sidebar
