@@ -33,6 +33,8 @@ Item {
             "nmProfiles": [],
             "tsAvailable": false,
             "tsProfiles": [],
+            "lastError": "",
+            "busyName": "",
             "connect": name => {},
             "disconnect": name => {}
         }, extra ?? {});
@@ -85,6 +87,16 @@ Item {
                 "name": "the chips only show up while something is connected",
                 "got": menu.implicitHeight > sameButOff.implicitHeight,
                 "want": root.scenario === "connected"
+            },
+            {
+                "name": "a refused connect gets a strip of its own",
+                "got": refused.implicitHeight > menu.implicitHeight,
+                "want": true
+            },
+            {
+                "name": "a machine with nothing set up explains itself instead of listing none",
+                "got": [tiny.isEmpty, menu.isEmpty],
+                "want": [true, false]
             }
         ];
     }
@@ -119,5 +131,14 @@ Item {
         id: tiny
         visible: false
         vpn: root.status()
+    }
+
+    // The same tunnel after a click the tool turned down, wording straight from tailscale
+    VpnMenu {
+        id: refused
+        visible: false
+        vpn: Object.assign({}, root.vpn, {
+            "lastError": "invalid value \"cloud-fi\" for --exit-node; must be IP or hostname"
+        })
     }
 }

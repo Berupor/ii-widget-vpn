@@ -56,6 +56,7 @@ CircleUtilButton {
             function close(): void {
                 active = false;
             }
+            onActiveChanged: active ? WidgetPopupCoordinator.open(menu) : WidgetPopupCoordinator.closed(menu)
 
             sourceComponent: VpnPopup {
                 anchor {

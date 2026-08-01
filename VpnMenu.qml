@@ -19,6 +19,11 @@ Item {
 
     /// The live tunnel, unless a demo scene hands the view a made-up one
     property var vpn: VpnStatus
+    // Demo scenes hand over a plain object without these, so read them defensively
+    readonly property string vpnError: root.vpn.lastError ?? ""
+    readonly property string vpnBusy: root.vpn.busyName ?? ""
+    // Nothing to click anywhere: no NetworkManager profiles and no tailscale exit nodes
+    readonly property bool isEmpty: root.vpn.nmProfiles.length === 0 && (!root.vpn.tsAvailable || root.vpn.tsProfiles.length === 0)
 
     readonly property real padding: 8
     // Profile names are short ("work", "home"), a floor keeps the strip and the chips
@@ -27,6 +32,19 @@ Item {
 
     implicitWidth: Math.max(root.minContentWidth, column.implicitWidth + root.padding * 2)
     implicitHeight: column.implicitHeight + root.padding * 2
+
+    // A clicked profile closes the menu once it is actually up, and keeps it open
+    // with the error strip when the tool refused
+    property bool actionPending: false
+    onVpnBusyChanged: {
+        if (root.vpnBusy !== "") {
+            root.actionPending = true;
+            return;
+        }
+        if (root.actionPending && root.vpnError === "")
+            root.requestClose();
+        root.actionPending = false;
+    }
 
     // One fact about the live tunnel
     component DetailChip: Pill {
@@ -63,6 +81,12 @@ Item {
         readonly property bool isActive: modelData.active === true
         readonly property color colText: profileRow.isActive ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnSurfaceVariant
         readonly property bool isTailscale: modelData.kind === "tailscale"
+        readonly property bool isBusy: root.vpnBusy === modelData.name
+
+        // nmcli can sit on a password prompt for a while; a second row started
+        // meanwhile would be dropped on the floor, so no row takes clicks
+        enabled: root.vpnBusy === ""
+        opacity: (root.vpnBusy === "" || profileRow.isBusy) ? 1 : 0.5
 
         Layout.fillWidth: true
         implicitHeight: 36
@@ -77,12 +101,13 @@ Item {
         colBackgroundToggledHover: Appearance.colors.colSecondaryContainerHover
         colRippleToggled: Appearance.colors.colSecondaryContainerActive
 
+        // No close here: the menu stays up until the action lands, so a refusal
+        // has somewhere to be seen. See root.onVpnBusyChanged
         releaseAction: () => {
             if (profileRow.isActive)
                 root.vpn.disconnect(profileRow.modelData.name);
             else
                 root.vpn.connect(profileRow.modelData.name);
-            root.requestClose();
         }
 
         contentItem: RowLayout {
@@ -110,10 +135,20 @@ Item {
             }
             // Turns into disconnect on hover, clicking the active profile drops the tunnel
             MaterialSymbol {
-                visible: profileRow.isActive
-                text: profileRow.hovered ? "link_off" : "check"
+                visible: profileRow.isActive || profileRow.isBusy
+                text: profileRow.isBusy ? "progress_activity" : (profileRow.hovered ? "link_off" : "check")
                 iconSize: Appearance.font.pixelSize.large
                 color: profileRow.colText
+
+                NumberAnimation on rotation {
+                    running: profileRow.isBusy
+                    from: 0
+                    to: 360
+                    duration: 1000
+                    loops: Animation.Infinite
+                    onRunningChanged: if (!running)
+                        parent.rotation = 0
+                }
             }
         }
     }
@@ -207,9 +242,89 @@ Item {
             }
         }
 
-        SectionLabel {
+        Rectangle { // What nmcli or tailscale said when it refused the last click
+            Layout.fillWidth: true
             Layout.topMargin: 2
-            text: root.vpn.nmProfiles.length > 0 ? Translation.tr("Profiles") : Translation.tr("No profiles")
+            visible: root.vpnError !== ""
+            implicitHeight: errorRow.implicitHeight + 8 * 2
+            radius: Appearance.rounding.small
+            color: Appearance.colors.colErrorContainer
+
+            RowLayout {
+                id: errorRow
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    verticalCenter: parent.verticalCenter
+                    leftMargin: 8
+                    rightMargin: 8
+                }
+                spacing: 6
+
+                MaterialSymbol {
+                    Layout.alignment: Qt.AlignTop
+                    text: "error"
+                    iconSize: Appearance.font.pixelSize.normal
+                    color: Appearance.colors.colOnErrorContainer
+                }
+                // Wraps rather than elides: the useful half of these messages is at the end
+                StyledText {
+                    Layout.fillWidth: true
+                    text: root.vpnError
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: Appearance.colors.colOnErrorContainer
+                    wrapMode: Text.WordWrap
+                    textFormat: Text.PlainText
+                }
+            }
+        }
+
+        SectionLabel {
+            // With nothing under it the label reads as a broken section, and the
+            // tailscale one below speaks for itself
+            visible: root.vpn.nmProfiles.length > 0
+            Layout.topMargin: 2
+            text: Translation.tr("Profiles")
+        }
+
+        Item { // Nothing set up anywhere: say where profiles come from instead of listing none
+            Layout.fillWidth: true
+            Layout.topMargin: 6
+            Layout.bottomMargin: 2
+            visible: root.isEmpty
+            implicitHeight: visible ? emptyColumn.implicitHeight : 0
+
+            ColumnLayout {
+                id: emptyColumn
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                }
+                spacing: 2
+
+                MaterialSymbol {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: "vpn_key_off"
+                    iconSize: Appearance.font.pixelSize.huge
+                    color: Appearance.colors.colSubtext
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("No profiles yet")
+                    horizontalAlignment: Text.AlignHCenter
+                    color: Appearance.colors.colOnLayer3
+                    textFormat: Text.PlainText
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("Add one in nmtui, or point the widget at a folder of .ovpn files in its settings")
+                    horizontalAlignment: Text.AlignHCenter
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: Appearance.colors.colSubtext
+                    wrapMode: Text.WordWrap
+                    textFormat: Text.PlainText
+                }
+            }
         }
 
         ColumnLayout { // Rows flush, they group by hover shape rather than by gaps

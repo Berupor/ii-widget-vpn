@@ -28,7 +28,12 @@ Singleton {
     property bool tsExitActive: false
     property string tsExitName: ""
     property string tsExitIp: ""
-    property var tsProfiles: [] // [{ name, active, kind: "tailscale" }, ...]
+    property var tsProfiles: [] // [{ name, target, active, kind: "tailscale" }, ...]
+
+    // Why the last connect/disconnect did not take, "" while nothing has gone wrong
+    property string lastError: ""
+    // Profile whose connect/disconnect is still running, "" when idle
+    property string busyName: ""
 
     readonly property bool connected: root.nmConnected || root.tsExitActive
     readonly property string vpnName: root.nmConnected ? root.nmActiveName : (root.tsExitActive ? root.tsExitName : "")
@@ -76,22 +81,43 @@ Singleton {
         const profile = root.profiles.find(p => p.name === name);
         if (!profile)
             return;
-        if (profile.kind === "tailscale")
-            Quickshell.execDetached(["tailscale", "set", `--exit-node=${name}`]);
-        else
-            Quickshell.execDetached(["nmcli", "connection", "up", "id", name]);
-        followup.restart();
+        root.run(profile, profile.kind === "tailscale" ? ["tailscale", "set", `--exit-node=${profile.target}`] : ["nmcli", "connection", "up", "id", name]);
     }
 
     function disconnect(name): void {
         const profile = root.profiles.find(p => p.name === name);
         if (!profile)
             return;
-        if (profile.kind === "tailscale")
-            Quickshell.execDetached(["tailscale", "set", "--exit-node="]);
-        else
-            Quickshell.execDetached(["nmcli", "connection", "down", "id", name]);
-        followup.restart();
+        root.run(profile, profile.kind === "tailscale" ? ["tailscale", "set", "--exit-node="] : ["nmcli", "connection", "down", "id", name]);
+    }
+
+    // One action at a time: a second click while nmcli is still asking for a password
+    // would overwrite the command of a running Process
+    function run(profile, command): void {
+        if (root.busyName !== "")
+            return;
+        root.lastError = "";
+        root.busyName = profile.name;
+        actionProc.command = command;
+        actionProc.running = true;
+    }
+
+    // Both tools explain a refusal on stderr and say nothing when they take
+    // ("invalid value … for --exit-node", "Error: unknown connection"). Detached
+    // processes threw that away, which read as a dead button
+    Process {
+        id: actionProc
+        stderr: StdioCollector {
+            id: actionErrCollector
+        }
+        onExited: (exitCode, exitStatus) => {
+            const message = actionErrCollector.text.trim().split("\n").filter(line => line !== "").pop() ?? "";
+            // Error before the busy flag: views watch busyName going idle to tell
+            // whether the action landed, and would read a stale message the other way
+            root.lastError = exitCode === 0 ? "" : (message !== "" ? message : `exit ${exitCode}`);
+            root.busyName = "";
+            followup.restart();
+        }
     }
 
     // Auto-import: any .ovpn dropped in the configured folder becomes an nm profile,
@@ -178,6 +204,9 @@ Singleton {
                     root.tsExitIp = active ? (active.TailscaleIPs?.[0] ?? "") : "";
                     root.tsProfiles = candidates.map(p => ({
                         name: p.HostName || p.DNSName || "",
+                        // `tailscale set --exit-node` takes an IP or a MagicDNS name; HostName is
+                        // the peer's OS hostname and gets rejected, so route by tailnet IP
+                        target: p.TailscaleIPs?.[0] ?? (p.DNSName ?? "").replace(/\.$/, ""),
                         active: p.ExitNode === true,
                         kind: "tailscale"
                     }));
