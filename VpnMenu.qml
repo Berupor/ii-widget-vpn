@@ -63,12 +63,12 @@ Item {
             MaterialSymbol {
                 text: chip.icon
                 iconSize: Appearance.font.pixelSize.small
-                color: Appearance.colors.colOnSurfaceVariant
+                color: Appearance.colors.colOnLayer3
             }
             StyledText {
                 text: chip.label
                 font.pixelSize: Appearance.font.pixelSize.smaller
-                color: Appearance.colors.colOnSurfaceVariant
+                color: Appearance.colors.colOnLayer3
                 textFormat: Text.PlainText
             }
         }
@@ -79,7 +79,7 @@ Item {
         id: profileRow
         required property var modelData
         readonly property bool isActive: modelData.active === true
-        readonly property color colText: profileRow.isActive ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnSurfaceVariant
+        readonly property color colText: profileRow.isActive ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnLayer3
         readonly property bool isTailscale: modelData.kind === "tailscale"
         readonly property bool isBusy: root.vpnBusy === modelData.name
 
@@ -197,8 +197,8 @@ Item {
                     text: root.vpn.icon
                     iconSize: Appearance.font.pixelSize.large
                     padding: 7
-                    color: root.vpn.connected ? Appearance.colors.colPrimary : Appearance.colors.colSurfaceContainerHighest
-                    colSymbol: root.vpn.connected ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSurfaceVariant
+                    color: root.vpn.connected ? Appearance.colors.colPrimary : Appearance.colors.colLayer4
+                    colSymbol: root.vpn.connected ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer4
 
                     Behavior on color {
                         animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
